@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>5 Color Spin Wheel</title>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    * { box-sizing: border-box; font-family: 'Segoe UI', Roboto, sans-serif; }
+    body { background: #0f172a; color: #fff; margin: 0; padding: 0; }
+    
+    /* Header Bar */
+    .header { display: flex; justify-content: space-between; align-items: center; background: #1e293b; padding: 12px 20px; border-bottom: 1px solid #334155; }
+    .wallet-box { display: flex; align-items: center; gap: 10px; background: #0f172a; padding: 6px 14px; border-radius: 20px; border: 1px solid #f59e0b; }
+    .wallet-balance { color: #f59e0b; font-weight: bold; font-size: 16px; }
+    .deposit-top-btn { background: #22c55e; color: white; border: none; padding: 6px 12px; border-radius: 14px; font-weight: bold; cursor: pointer; font-size: 13px; }
+
+    /* Main UI Card */
+    .card { background: #1e293b; max-width: 400px; margin: 20px auto; padding: 20px; border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); text-align: center; }
+    input, select, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: none; font-size: 15px; }
+    input, select { background: #334155; color: white; }
+    button { cursor: pointer; font-weight: bold; }
+    .btn-blue { background: #2563eb; color: white; }
+    .btn-green { background: #16a34a; color: white; }
+    .btn-red { background: #dc2626; color: white; }
+
+    /* Wheel UI */
+    .wheel-box { position: relative; width: 260px; height: 260px; margin: 20px auto; }
+    #pointer { position: absolute; top: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 12px solid transparent; border-right: 12px solid transparent; border-top: 24px solid #ef4444; z-index: 10; }
+    canvas { border-radius: 50%; transition: transform 4s cubic-bezier(0.15, 0.90, 0.20, 1.00); }
+
+    /* Wallet Modal / Popup */
+    .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: none; justify-content: center; align-items: center; z-index: 100; }
+    .modal-content { background: #1e293b; width: 90%; max-width: 380px; padding: 20px; border-radius: 16px; position: relative; }
+    .close-modal { position: absolute; top: 12px; right: 16px; font-size: 20px; cursor: pointer; color: #94a3b8; }
+    .tab-buttons { display: flex; margin-bottom: 15px; border-bottom: 1px solid #334155; }
+    .tab-btn { flex: 1; padding: 10px; background: none; color: #94a3b8; border: none; border-bottom: 2px solid transparent; border-radius: 0; }
+    .tab-btn.active { color: #38bdf8; border-bottom-color: #38bdf8; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+  <!-- LOGIN SECTION -->
+  <div id="loginSection" class="card" style="margin-top: 60px;">
+    <h2>🎮 Game Login</h2>
+    <p style="color:#94a3b8; font-size:13px;">Login or Register to play</p>
+    <input type="text" id="phone" placeholder="Mobile Number" />
+    <input type="password" id="password" placeholder="Password" />
+    <button class="btn-blue" onclick="login()">Login / Register</button>
+  </div>
+
+  <!-- GAME INTERFACE -->
+  <div id="gameSection" style="display:none;">
+    
+    <!-- TOP HEADER -->
+    <div class="header">
+      <div style="font-weight:bold; color:#38bdf8;">📱 <span id="userPhoneDisplay"></span></div>
+      <div class="wallet-box">
+        <span class="wallet-balance">₹<span id="walletBalance">0</span></span>
+        <button class="deposit-top-btn" onclick="openWalletModal('deposit')">+ Deposit</button>
+      </div>
+    </div>
+
+    <!-- SPIN WHEEL CARD -->
+    <div class="card">
+      <div class="wheel-box">
+        <div id="pointer"></div>
+        <canvas id="wheel" width="260" height="260"></canvas>
+      </div>
+
+      <h3>Place Bet</h3>
+      <select id="colorSelect">
+        <option value="Red">Red 🔴</option>
+        <option value="Green">Green 🟢</option>
+        <option value="Blue">Blue 🔵</option>
+        <option value="Yellow">Yellow 🟡</option>
+        <option value="Purple">Purple 🟣</option>
+      </select>
+      
+      <!-- Bet Input (₹10 - ₹100 Limit) -->
+      <input type="number" id="betAmount" value="10" min="10" max="100" placeholder="Bet Amount (₹10 - ₹100)" />
+      <p style="font-size:11px; color:#94a3b8; margin-top:-4px;">Min Bet: ₹10 | Max Bet: ₹100</p>
+      
+      <button class="btn-blue" id="spinBtn" onclick="spinWheel()">SPIN & BET</button>
+    </div>
+
+  </div>
+
+  <!-- DEPOSIT / WITHDRAWAL MODAL -->
+  <div class="modal-overlay" id="walletModal">
+    <div class="modal-content">
+      <span class="close-modal" onclick="closeWalletModal()">&times;</span>
+      
+      <div class="tab-buttons">
+        <button class="tab-btn active" id="tabDepBtn" onclick="switchTab('deposit')">Deposit</button>
+        <button class="tab-btn" id="tabWithBtn" onclick="switchTab('withdraw')">Withdrawal</button>
+      </div>
+
+      <!-- DEPOSIT TAB -->
+      <div id="depositTab">
+        <h4>Deposit Funds</h4>
+        <input type="number" id="depAmount" value="100" placeholder="Enter Amount (₹)" />
+        <button class="btn-green" onclick="processDeposit()">Pay & Add Money</button>
+      </div>
+
+      <!-- WITHDRAW TAB -->
+      <div id="withdrawTab" style="display:none;">
+        <h4>Withdraw Funds</h4>
+        
+        <div id="kycBlock" style="margin-bottom: 15px; border-bottom: 1px solid #334155; padding-bottom: 10px;">
+          <p style="font-size:12px; color:#f59e0b; margin:4px 0;">⚠️ Complete KYC required before Withdrawal</p>
+          <input type="text" id="panInput" placeholder="Enter 10-Digit PAN Number" />
+          <button class="btn-blue" onclick="submitKYC()" style="padding:8px;">Verify KYC</button>
+        </div>
+        <div id="kycVerifiedBadge" style="display:none; color:#22c55e; font-size:13px; font-weight:bold; margin-bottom:10px;">
+          ✅ KYC Verified
+        </div>
+
+        <input type="number" id="withdrawAmt" placeholder="Amount (₹)" />
+        <input type="text" id="withdrawUpi" placeholder="UPI ID (e.g. user@upi)" />
+        <button class="btn-red" onclick="processWithdraw()">Withdraw Funds</button>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+    let userPhone = '';
+    let isKycDone = false;
+    const canvas = document.getElementById('wheel');
+    const ctx = canvas.getContext('2d');
+    const colorsHex = ['#dc2626', '#16a34a', '#2563eb', '#eab308', '#9333ea'];
+    let currentRotation = 0;
+
+    function drawWheel() {
+      const slice = (2 * Math.PI) / 5;
+      for (let i = 0; i < 5; i++) {
+        ctx.beginPath();
+        ctx.fillStyle = colorsHex[i];
+        ctx.moveTo(130, 130);
+        ctx.arc(130, 130, 125, i * slice, (i + 1) * slice);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+    drawWheel();
+
+    async function login() {
+      const phone = document.getElementById('phone').value;
+      const password = document.getElementById('password').value;
+
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, password })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        userPhone = phone;
+        isKycDone = data.user.isKycVerified;
+
+        document.getElementById('loginSection').style.display = 'none';
+        document.getElementById('gameSection').style.display = 'block';
+        document.getElementById('userPhoneDisplay').innerText = phone;
+        document.getElementById('walletBalance').innerText = data.user.wallet;
+
+        if (isKycDone) {
+          document.getElementById('kycBlock').style.display = 'none';
+          document.getElementById('kycVerifiedBadge').style.display = 'block';
+        }
+      } else {
+        alert(data.message);
+      }
+    }
+
+    function spinWheel() {
+      const selectedColor = document.getElementById('colorSelect').value;
+      const betAmount = Number(document.getElementById('betAmount').value);
+      const currentBalance = Number(document.getElementById('walletBalance').innerText);
+
+      if (betAmount < 10 || betAmount > 100) {
+        alert('Bet amount must be between ₹10 and ₹100!');
+        return;
+      }
+
+      if (currentBalance < betAmount || currentBalance <= 0) {
+        alert('Insufficient balance! Please deposit money before playing.');
+        openWalletModal('deposit');
+        return;
+      }
+
+      document.getElementById('spinBtn').disabled = true;
+      socket.emit('placeBet', { phone: userPhone, selectedColor, betAmount });
+    }
+
+    socket.on('walletUpdated', (data) => {
+      document.getElementById('walletBalance').innerText = data.newBalance;
+    });
+
+    socket.on('spinResult', (data) => {
+      const targetDegrees = 360 - (data.winningIndex * 72) - 36;
+      currentRotation += 1440 + targetDegrees;
+      canvas.style.transform = `rotate(${currentRotation}deg)`;
+
+      setTimeout(() => {
+        document.getElementById('walletBalance').innerText = data.newBalance;
+        document.getElementById('spinBtn').disabled = false;
+        alert(data.isWin ? `🎉 Winning Color: ${data.winningColor}! You Won!` : `❌ Winning Color: ${data.winningColor}! You Lost.`);
+      }, 4100);
+    });
+
+    socket.on('errorMsg', (msg) => {
+      if (msg === 'INSUFFICIENT_BALANCE') {
+        alert('Insufficient Balance! Please deposit first.');
+        openWalletModal('deposit');
+      } else {
+        alert(msg);
+      }
+      document.getElementById('spinBtn').disabled = false;
+    });
+
+    function openWalletModal(tab = 'deposit') {
+      document.getElementById('walletModal').style.display = 'flex';
+      switchTab(tab);
+    }
+
+    function closeWalletModal() {
+      document.getElementById('walletModal').style.display = 'none';
+    }
+
+    function switchTab(tab) {
+      if (tab === 'deposit') {
+        document.getElementById('depositTab').style.display = 'block';
+        document.getElementById('withdrawTab').style.display = 'none';
+        document.getElementById('tabDepBtn').classList.add('active');
+        document.getElementById('tabWithBtn').classList.remove('active');
+      } else {
+        document.getElementById('depositTab').style.display = 'none';
+        document.getElementById('withdrawTab').style.display = 'block';
+        document.getElementById('tabWithBtn').classList.add('active');
+        document.getElementById('tabDepBtn').classList.remove('active');
+      }
+    }
+
+    async function submitKYC() {
+      const panNumber = document.getElementById('panInput').value;
+      const res = await fetch('/api/user/kyc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: userPhone, panNumber })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message);
+        isKycDone = true;
+        document.getElementById('kycBlock').style.display = 'none';
+        document.getElementById('kycVerifiedBadge').style.display = 'block';
+      } else {
+        alert(data.message);
+      }
+    }
+
+    async function processDeposit() {
+      const amount = document.getElementById('depAmount').value;
+      if (!amount || amount <= 0) return alert('Enter valid deposit amount');
+
+      const res = await fetch('/api/payment/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount, phone: userPhone })
+      });
+      const data = await res.json();
+
+      const options = {
+        key: 'rzp_test_TjBM0y3EF3rCh5',
+        amount: data.order.amount,
+        currency: 'INR',
+        name: 'Game Wallet Recharge',
+        order_id: data.order.id,
+        handler: async function (pRes) {
+          const vRes = await fetch('/api/payment/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...pRes, phone: userPhone, amount })
+          });
+          const vData = await vRes.json();
+          if (vData.success) {
+            alert('Deposit Successful!');
+            document.getElementById('walletBalance').innerText = vData.newBalance;
+            closeWalletModal();
+          }
+        }
+      };
+      new Razorpay(options).open();
+    }
+
+    async function processWithdraw() {
+      const amount = document.getElementById('withdrawAmt').value;
+      const upiId = document.getElementById('withdrawUpi').value;
+
+      const res = await fetch('/api/payment/withdraw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: userPhone, amount, upiId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message);
+        document.getElementById('walletBalance').innerText = data.newBalance;
+        closeWalletModal();
+      } else alert(data.message);
+    }
+  </script>
+
+</body>
+</html>

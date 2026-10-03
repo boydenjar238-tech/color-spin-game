@@ -1,0 +1,14 @@
+{
+  "name": "color-4player-game",
+  "version": "1.0.0",
+  "description": "Color Game App",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "razorpay": "^2.9.8",
+    "socket.io": "^4.8.4"
+  }
+}
